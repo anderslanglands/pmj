@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use rand::prelude::*;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
@@ -52,7 +54,8 @@ pub fn generate_pj(sqrt_num_samples: usize) -> Vec<(f64, f64)> {
 }
 
 pub fn generate_pj_seeded(num_samples: usize, seed: u64) -> Vec<(f64, f64)> {
-    let num_samples = num_samples.next_power_of_two(); // I love rust
+    let sqrt_num_samples = ((num_samples as f64).sqrt() as usize).next_power_of_two();
+    let num_samples = sqrt_num_samples * sqrt_num_samples;
     let mut samples = Vec::new();
     samples.resize(num_samples, (0.0, 0.0));
     // generate first sample at random position
@@ -69,15 +72,6 @@ pub fn generate_pj_seeded(num_samples: usize, seed: u64) -> Vec<(f64, f64)> {
     samples
 }
 
-const fn num_bits<T>() -> usize {
-    std::mem::size_of::<T>() * 8
-}
-
-fn log2(x: usize) -> u32 {
-    assert!(x > 0);
-    num_bits::<usize>() as u32 - x.leading_zeros() - 1
-}
-
 fn generate_sample_point_mj(
     rng: &mut Xoshiro256Plus,
     i: f64,
@@ -90,6 +84,16 @@ fn generate_sample_point_mj(
     occupied_1d_y: &mut [bool],
     samples: &mut Vec<(f64, f64)>,
 ) {
+    // println!("\t\t\tGenerating sample point with:");
+    // println!("\t\t\ti: {}", i);
+    // println!("\t\t\tj: {}", j);
+    // println!("\t\t\txhalf: {}", xhalf);
+    // println!("\t\t\tyhalf: {}", yhalf);
+    // println!("\t\t\tn: {}", n);
+    // println!("\t\t\tN: {}", N);
+    // println!("\t\t\tocc_x: {:?}", occupied_1d_x);
+    // println!("\t\t\tocc_y: {:?}", occupied_1d_y);
+    
     let NN = 2.0 * N;
     let mut best_dist = 0.0;
     let mut num_cand = 10;
@@ -114,8 +118,11 @@ fn generate_sample_point_mj(
         // samples for blue noise properties
         // TODO
     }
+    // println!("Generated ({:?})", cand_pt);
     // mark 1d strata as occupied
+    // println!("Marking x[{}]", (NN * cand_pt.0).floor() as usize);
     occupied_1d_x[(NN * cand_pt.0).floor() as usize] = true;
+    // println!("Marking y[{}]", (NN * cand_pt.1).floor() as usize);
     occupied_1d_y[(NN * cand_pt.1).floor() as usize] = true;
     // assign new sample point
     samples.push(cand_pt);
@@ -150,6 +157,7 @@ fn extend_sequence_even(
     occupied_1d_y: &mut [bool],
     samples: &mut Vec<(f64, f64)>,
 ) {
+    // println!("Extending even");
     let n = N.sqrt();
     // mark already occupied 1d strata so we can avoid them
     mark_occupied_strata_pmj(N as usize, occupied_1d_x, occupied_1d_y, samples.as_slice());
@@ -188,7 +196,8 @@ fn extend_sequence_odd(
     yhalves: &mut [f64],
     samples: &mut Vec<(f64, f64)>,
 ) {
-    let n = N.sqrt();
+    // println!("Extending odd");
+    let n = (N/2.0).sqrt();
     // mark already occupied 1d strata so we can avoid them
     mark_occupied_strata_pmj(N as usize, occupied_1d_x, occupied_1d_y, samples.as_slice());
     // (Optionally:
@@ -250,11 +259,12 @@ fn extend_sequence_odd(
 }
 
 pub fn generate_pmj_seeded(num_samples: usize, seed: u64) -> Vec<(f64, f64)> {
-    let num_samples = num_samples.next_power_of_two(); // I love rust
-    let mut samples = vec![(0.0, 0.0); num_samples];
+    let sqrt_num_samples = ((num_samples as f64).sqrt() as usize).next_power_of_two();
+    let num_samples = sqrt_num_samples * sqrt_num_samples;
+    let mut samples = Vec::new();
     // generate first sample at random position
     let mut rng = Xoshiro256Plus::seed_from_u64(seed);
-    samples[0] = (rng.gen::<f64>(), rng.gen::<f64>());
+    samples.push((rng.gen::<f64>(), rng.gen::<f64>()));
 
     let mut occupied_1d_x = vec![false; num_samples];
     let mut occupied_1d_y = vec![false; num_samples];
@@ -265,27 +275,22 @@ pub fn generate_pmj_seeded(num_samples: usize, seed: u64) -> Vec<(f64, f64)> {
     let mut N = 1;
     while N < num_samples {
         // generate next 3N sample points
-        if log2(N) % 2 == 0 {
-            // even power of two
-            extend_sequence_even(
-                &mut rng,
-                N as f64,
-                &mut occupied_1d_x,
-                &mut occupied_1d_y,
-                &mut samples,
-            );
-        } else {
-            // odd power of two
-            extend_sequence_odd(
-                &mut rng,
-                N as f64,
-                &mut occupied_1d_x,
-                &mut occupied_1d_y,
-                &mut xhalves,
-                &mut yhalves,
-                &mut samples,
-            );
-        }
+        extend_sequence_even(
+            &mut rng,
+            N as f64,
+            &mut occupied_1d_x,
+            &mut occupied_1d_y,
+            &mut samples,
+        );
+        extend_sequence_odd(
+            &mut rng,
+            2.0 * N as f64,
+            &mut occupied_1d_x,
+            &mut occupied_1d_y,
+            &mut xhalves,
+            &mut yhalves,
+            &mut samples,
+        );
 
         N *= 4;
     }
@@ -293,10 +298,14 @@ pub fn generate_pmj_seeded(num_samples: usize, seed: u64) -> Vec<(f64, f64)> {
     samples
 }
 
+pub fn generate_pmj(num_samples: usize) -> Vec<(f64, f64)> {
+    generate_pmj_seeded(num_samples, 0)
+}
+
 #[cfg(test)]
 #[test]
-fn it_works() {
-    let samples = generate_pj(2);
+fn test_generate_pj() {
+    let samples = generate_pj(4);
     assert_eq!(
         samples,
         [
@@ -304,6 +313,21 @@ fn it_works() {
             (0.48774904600841795, 0.6558958405065498),
             (0.5072163698519102, 0.8480898038405176),
             (0.03321444179621752, 0.3255121930060155),
+        ]
+    )
+}
+
+#[cfg(test)]
+#[test]
+fn test_generate_pmj() {
+    let samples = generate_pmj(4);
+    assert_eq!(
+        samples,
+        [
+            (0.8541927863674711, 0.19272815297677148),
+            (0.24684294195541084, 0.538566623107706),
+            (0.5955176479006135, 0.8436799993413805),
+            (0.432043726788904, 0.3624930244074985),
         ]
     )
 }
