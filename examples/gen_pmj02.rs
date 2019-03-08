@@ -1,9 +1,9 @@
 use pmj::*;
 
 pub fn main() {
-    let samples = generate_pmj(1024);
+    let samples = generate_pmj02(1024);
     println!("# Generated samples:" );
-    for s in samples {
+    for (i, s) in samples.iter().enumerate() {
         println!("{} {}", s.0, s.1);
     }
 }
