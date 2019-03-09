@@ -84,22 +84,13 @@ fn generate_sample_point_mj(
     occupied_1d_y: &mut [bool],
     samples: &mut Vec<(f64, f64)>,
 ) {
-    // println!("\t\t\tGenerating sample point with:");
-    // println!("\t\t\ti: {}", i);
-    // println!("\t\t\tj: {}", j);
-    // println!("\t\t\txhalf: {}", xhalf);
-    // println!("\t\t\tyhalf: {}", yhalf);
-    // println!("\t\t\tn: {}", n);
-    // println!("\t\t\tN: {}", N);
-    // println!("\t\t\tocc_x: {:?}", occupied_1d_x);
-    // println!("\t\t\tocc_y: {:?}", occupied_1d_y);
-    
     let NN = 2.0 * N;
     let mut best_dist = 0.0;
-    let mut num_cand = 10;
+    let mut num_cand = 1;
     let mut cand_pt = (0.0, 0.0);
+
     // generate candidate points and pick the best
-    for t in 1..num_cand {
+    for _ in 0..num_cand {
         // generate candidate x coord
         loop {
             cand_pt.0 = (i + 0.5 * (xhalf + rng.gen::<f64>())) / n;
@@ -114,15 +105,12 @@ fn generate_sample_point_mj(
                 break;
             }
         }
+        // TODO (optionally):
         // evaluate distance between candidate point and existing
         // samples for blue noise properties
-        // TODO
     }
-    // println!("Generated ({:?})", cand_pt);
     // mark 1d strata as occupied
-    // println!("Marking x[{}]", (NN * cand_pt.0).floor() as usize);
     occupied_1d_x[(NN * cand_pt.0).floor() as usize] = true;
-    // println!("Marking y[{}]", (NN * cand_pt.1).floor() as usize);
     occupied_1d_y[(NN * cand_pt.1).floor() as usize] = true;
     // assign new sample point
     samples.push(cand_pt);
@@ -157,7 +145,6 @@ fn extend_sequence_even(
     occupied_1d_y: &mut [bool],
     samples: &mut Vec<(f64, f64)>,
 ) {
-    // println!("Extending even");
     let n = N.sqrt();
     // mark already occupied 1d strata so we can avoid them
     mark_occupied_strata_pmj(N as usize, occupied_1d_x, occupied_1d_y, samples.as_slice());
@@ -272,7 +259,6 @@ fn extend_sequence_odd(
     yhalves: &mut [f64],
     samples: &mut Vec<(f64, f64)>,
 ) {
-    // println!("Extending odd");
     let n = (N/2.0).sqrt();
     // mark already occupied 1d strata so we can avoid them
     mark_occupied_strata_pmj(N as usize, occupied_1d_x, occupied_1d_y, samples.as_slice());
@@ -595,7 +581,7 @@ fn is_occupied(pt: (f64, f64), NN: usize, occupied_strata: &Vec<Vec<bool>>) -> b
     while xdivs != 0 {
         let xstratum = (xdivs as f64 * pt.0).floor() as usize;
         let ystratum = (ydivs as f64 * pt.1).floor() as usize;
-        if occupied_strata[shape][ystratum*xdivs+xstratum] {
+        if occupied_strata[shape][ystratum * xdivs + xstratum] {
             return true;
         }
         shape += 1;
@@ -653,21 +639,21 @@ fn extend_sequence_odd_pmj02(
     evendiags: &mut Vec<Vec<bool>>,
     subquadchoices_x: &mut Vec<Vec<usize>>,
     subquadchoices_y: &mut Vec<Vec<usize>>,
+    select_quadrants: bool,
 ) {
     // println!("Extending odd");
     let n = (N/2.0).sqrt();
     // mark already occupied 1d strata so we can avoid them
     mark_occupied_strata_pmj02(N as usize, occupied_strata, samples.as_slice());
-    // (Optionally:
-    // 1) Classify occupied sub-pixels: odd or even diagonal
+    // Classify occupied sub-pixels: odd or even diagonal
     classify_sub_quadrants(n, N, samples, evendiags);
-    // 2) Pre-select well-balanced subquadrants here for better
-    // sample distribution between powers of two samples)
-    // loop {
-    //     if select_sub_quadrants(rng, n as usize, choice_balance_x, choice_balance_y, evendiags, subquadchoices_x, subquadchoices_y) {
-    //         break;
-    //     }
-    // }
+    // Pre-select well-balanced subquadrants here for better
+    // sample distribution between powers of two samples
+    loop {
+        if select_sub_quadrants(rng, n as usize, choice_balance_x, choice_balance_y, evendiags, subquadchoices_x, subquadchoices_y) {
+            break;
+        }
+    }
     // Loop over N/2 old samples and generate 2 new samples for each // – one at a time to keep the order consecutive (for "greedy"
     // best candidates)
     // Select one of the two remaining subquadrants
@@ -675,14 +661,21 @@ fn extend_sequence_odd_pmj02(
         let oldpt = samples[s];
         let i = (n * oldpt.0).floor();
         let j = (n * oldpt.1).floor();
-        let mut xhalf = (2.0 * (n * oldpt.0 - i)).floor();
-        let mut yhalf = (2.0 * (n * oldpt.1 - j)).floor();
-        // randomly select one of the two remaining subquadrants
-        if rng.gen::<f64>() < 0.5 {
-            xhalf = 1.0 - xhalf;
+        let (xhalf, yhalf) = if select_quadrants {
+            let xhalf = subquadchoices_x[j as usize][i as usize] as f64;
+            let yhalf = subquadchoices_y[j as usize][i as usize] as f64;
+            (xhalf, yhalf)
         } else {
-            yhalf = 1.0 - yhalf;
-        }
+            let mut xhalf = (2.0 * (n * oldpt.0 - i)).floor();
+            let mut yhalf = (2.0 * (n * oldpt.1 - j)).floor();
+            // randomly select one of the two remaining subquadrants
+            if rng.gen::<f64>() < 0.5 {
+                xhalf = 1.0 - xhalf;
+            } else {
+                yhalf = 1.0 - yhalf;
+            }
+            (xhalf, yhalf)
+        };
         xhalves[s] = xhalf;
         yhalves[s] = yhalf;
         // generate a sample point
@@ -720,7 +713,7 @@ fn extend_sequence_odd_pmj02(
     }
 }
 
-pub fn generate_pmj_seeded_02(num_samples: usize, seed: u64) -> Vec<(f64, f64)> {
+pub fn generate_pmj_seeded_02(num_samples: usize, seed: u64, select_quadrants: bool) -> Vec<(f64, f64)> {
     let sqrt_num_samples = ((num_samples as f64).sqrt() as usize).next_power_of_two();
     let num_samples = sqrt_num_samples * sqrt_num_samples;
     let mut samples = Vec::new();
@@ -762,6 +755,7 @@ pub fn generate_pmj_seeded_02(num_samples: usize, seed: u64) -> Vec<(f64, f64)> 
             &mut evendiags,
             &mut subquadchoices_x,
             &mut subquadchoices_y,
+            select_quadrants,
         );
 
         N *= 4;
@@ -771,7 +765,7 @@ pub fn generate_pmj_seeded_02(num_samples: usize, seed: u64) -> Vec<(f64, f64)> 
 }
 
 pub fn generate_pmj02(num_samples: usize) -> Vec<(f64, f64)> {
-    generate_pmj_seeded_02(num_samples, 0)
+    generate_pmj_seeded_02(num_samples, 0, false)
 }
 
 
